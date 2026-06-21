@@ -37,6 +37,7 @@
 
     <main>
         @include('partials.upload')
+        @include('partials.edit')
         @include('partials.result')
     </main>
 

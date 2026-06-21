@@ -30,6 +30,11 @@ const MAX_BYTES = 8 * 1024 * 1024;
 const ACCEPTED = ['image/png', 'image/jpeg', 'image/webp'];
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
+// Éléments lourds gardés hors de l'état réactif Alpine.
+let srcCanvas = null;   // canvas de la zone recadrée (échantillonnage + loupe)
+let srcImage = null;    // image originale chargée (pour ré-appliquer rotation/flip)
+let baseCanvas = null;  // image après rotation/flip, avant recadrage
+
 function downloadBlob(filename, data, mime) {
     const blob = new Blob([data], { type: mime });
     const url = URL.createObjectURL(blob);
@@ -58,7 +63,11 @@ Alpine.data('paletteApp', () => ({
     dragIndex: null,
     showSource: true,
     pickMode: false,
-    loupe: { show: false, x: 0, y: 0, bg: '0% 0%', hex: '#000000' },
+    loupe: { show: false, x: 0, y: 0, hex: '#000000' },
+    editorUrl: '',
+    rot: 0,
+    flipH: false,
+    crop: { x: 0, y: 0, w: 1, h: 1 },
 
     _imageData: null,
     _imgW: 0,
@@ -106,30 +115,17 @@ Alpine.data('paletteApp', () => ({
 
         img.onload = () => {
             try {
-                const max = 360;
-                const scale = Math.min(1, max / Math.max(img.width, img.height));
-                const w = Math.max(1, Math.round(img.width * scale));
-                const h = Math.max(1, Math.round(img.height * scale));
-                const canvas = document.createElement('canvas');
-                canvas.width = w;
-                canvas.height = h;
-                const ctx = canvas.getContext('2d', { willReadFrequently: true });
-                ctx.drawImage(img, 0, 0, w, h);
-                this._imageData = ctx.getImageData(0, 0, w, h).data;
-                this._imgW = w;
-                this._imgH = h;
-
-                if (this.thumbUrl) URL.revokeObjectURL(this.thumbUrl);
-                this.thumbUrl = url;
+                srcImage = img;
                 this.fileName = file.name;
-
-                this.buildFromImage();
-                this.screen = 'result';
+                this.rot = 0;
+                this.flipH = false;
+                this.renderBase();
+                this.screen = 'edit';
             } catch (err) {
                 this.error = 'Impossible de lire cette image — essaie-en une autre.';
-                URL.revokeObjectURL(url);
             } finally {
                 this.loading = false;
+                URL.revokeObjectURL(url);
             }
         };
 
@@ -140,6 +136,106 @@ Alpine.data('paletteApp', () => ({
         };
 
         img.src = url;
+    },
+
+    // --- Éditeur image (rotation / flip / recadrage) ---
+    renderBase() {
+        if (!srcImage) return;
+        const cap = 1400;
+        const scale = Math.min(1, cap / Math.max(srcImage.naturalWidth, srcImage.naturalHeight));
+        const iw = Math.max(1, Math.round(srcImage.naturalWidth * scale));
+        const ih = Math.max(1, Math.round(srcImage.naturalHeight * scale));
+        const rotated = this.rot % 2 === 1;
+        const cw = rotated ? ih : iw;
+        const ch = rotated ? iw : ih;
+        const cv = document.createElement('canvas');
+        cv.width = cw;
+        cv.height = ch;
+        const ctx = cv.getContext('2d');
+        ctx.save();
+        ctx.translate(cw / 2, ch / 2);
+        ctx.rotate((this.rot * Math.PI) / 2);
+        if (this.flipH) ctx.scale(-1, 1);
+        ctx.drawImage(srcImage, -iw / 2, -ih / 2, iw, ih);
+        ctx.restore();
+        baseCanvas = cv;
+        this.editorUrl = cv.toDataURL('image/png');
+        this.resetCrop();
+    },
+
+    rotate(dir) {
+        this.rot = (this.rot + dir + 4) % 4;
+        this.renderBase();
+    },
+    flip() {
+        this.flipH = !this.flipH;
+        this.renderBase();
+    },
+    resetCrop() {
+        this.crop = { x: 0, y: 0, w: 1, h: 1 };
+    },
+
+    startCrop(e, mode) {
+        const sx = (e.touches ? e.touches[0] : e).clientX;
+        const sy = (e.touches ? e.touches[0] : e).clientY;
+        const rect = this.$refs.editorImg.getBoundingClientRect();
+        const orig = { ...this.crop };
+        const min = 0.06;
+        const move = (ev) => {
+            const cx = (ev.touches ? ev.touches[0] : ev).clientX;
+            const cy = (ev.touches ? ev.touches[0] : ev).clientY;
+            const dx = (cx - sx) / rect.width;
+            const dy = (cy - sy) / rect.height;
+            let { x, y, w, h } = orig;
+            if (mode === 'move') {
+                x = clamp(x + dx, 0, 1 - w);
+                y = clamp(y + dy, 0, 1 - h);
+            } else {
+                if (mode.includes('w')) { const nx = clamp(x + dx, 0, x + w - min); w += x - nx; x = nx; }
+                if (mode.includes('e')) { w = clamp(w + dx, min, 1 - x); }
+                if (mode.includes('n')) { const ny = clamp(y + dy, 0, y + h - min); h += y - ny; y = ny; }
+                if (mode.includes('s')) { h = clamp(h + dy, min, 1 - y); }
+            }
+            this.crop = { x, y, w, h };
+        };
+        const up = () => {
+            window.removeEventListener('pointermove', move);
+            window.removeEventListener('pointerup', up);
+        };
+        window.addEventListener('pointermove', move);
+        window.addEventListener('pointerup', up);
+    },
+
+    // Valide l'édition : recadre, échantillonne, lance l'extraction.
+    confirmEdit() {
+        if (!baseCanvas) return;
+        this.loading = true;
+        const bw = baseCanvas.width, bh = baseCanvas.height;
+        const cx = clamp(Math.round(this.crop.x * bw), 0, bw - 1);
+        const cy = clamp(Math.round(this.crop.y * bh), 0, bh - 1);
+        const cw = clamp(Math.round(this.crop.w * bw), 1, bw - cx);
+        const ch = clamp(Math.round(this.crop.h * bh), 1, bh - cy);
+        const max = 700;
+        const s = Math.min(1, max / Math.max(cw, ch));
+        const w = Math.max(1, Math.round(cw * s));
+        const h = Math.max(1, Math.round(ch * s));
+        const cv = document.createElement('canvas');
+        cv.width = w;
+        cv.height = h;
+        const ctx = cv.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(baseCanvas, cx, cy, cw, ch, 0, 0, w, h);
+        this._imageData = ctx.getImageData(0, 0, w, h).data;
+        this._imgW = w;
+        this._imgH = h;
+        srcCanvas = cv;
+        this.thumbUrl = cv.toDataURL('image/png');
+        this.buildFromImage();
+        this.loading = false;
+        this.screen = 'result';
+    },
+
+    editAgain() {
+        this.screen = 'edit';
     },
 
     // Calcule les 3 variantes d'un coup, puis charge la variante active.
@@ -276,27 +372,62 @@ Alpine.data('paletteApp', () => ({
         return rgbToHex({ r: d[o], g: d[o + 1], b: d[o + 2] });
     },
 
+    // Coordonnées normalisées du curseur dans l'image (rect réel de l'<img>).
+    cursorFraction(e) {
+        const rect = this.$refs.srcImg.getBoundingClientRect();
+        return {
+            fx: (e.clientX - rect.left) / rect.width,
+            fy: (e.clientY - rect.top) / rect.height,
+            cx: e.clientX - rect.left,
+            cy: e.clientY - rect.top,
+        };
+    },
+
     onImageMove(e) {
         if (!this.pickMode || !this._imageData) return;
-        const rect = e.currentTarget.getBoundingClientRect();
-        const fx = (e.clientX - rect.left) / rect.width;
-        const fy = (e.clientY - rect.top) / rect.height;
+        const { fx, fy, cx, cy } = this.cursorFraction(e);
         if (fx < 0 || fx > 1 || fy < 0 || fy > 1) {
             this.loupe.show = false;
             return;
         }
         this.loupe.show = true;
-        this.loupe.x = e.clientX - rect.left;
-        this.loupe.y = e.clientY - rect.top;
-        this.loupe.bg = `${fx * 100}% ${fy * 100}%`;
+        this.loupe.x = cx;
+        this.loupe.y = cy;
         this.loupe.hex = this.pixelAt(fx, fy);
+        this.drawLoupe(fx, fy);
+    },
+
+    // Dessine la loupe sur un canvas : zoom pixel-perfect, la cellule centrale
+    // entourée = exactement le pixel sous le curseur (la source de vérité).
+    drawLoupe(fx, fy) {
+        const lc = this.$refs.loupe;
+        if (!lc || !srcCanvas) return;
+        const w = this._imgW, h = this._imgH;
+        const px = clamp(Math.round(fx * w), 0, w - 1);
+        const py = clamp(Math.round(fy * h), 0, h - 1);
+        const cells = 11;
+        const half = (cells - 1) / 2;
+        const sx = clamp(px - half, 0, Math.max(0, w - cells));
+        const sy = clamp(py - half, 0, Math.max(0, h - cells));
+        const ctx = lc.getContext('2d');
+        ctx.imageSmoothingEnabled = false;
+        ctx.clearRect(0, 0, lc.width, lc.height);
+        ctx.drawImage(srcCanvas, sx, sy, cells, cells, 0, 0, lc.width, lc.height);
+        const cell = lc.width / cells;
+        const rx = (px - sx) * cell;
+        const ry = (py - sy) * cell;
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = 'rgba(0,0,0,.55)';
+        ctx.strokeRect(rx + 0.5, ry + 0.5, cell - 1, cell - 1);
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#fff';
+        ctx.strokeRect(rx + 1.5, ry + 1.5, cell - 3, cell - 3);
     },
 
     onImageClick(e) {
         if (!this.pickMode || !this._imageData) return;
-        const rect = e.currentTarget.getBoundingClientRect();
-        const fx = (e.clientX - rect.left) / rect.width;
-        const fy = (e.clientY - rect.top) / rect.height;
+        const { fx, fy } = this.cursorFraction(e);
+        if (fx < 0 || fx > 1 || fy < 0 || fy > 1) return;
         const hex = this.pixelAt(fx, fy);
         if (this.colors.length < 10) {
             this.colors.push(this.makeColor(hex, this.colors.length, { x: fx, y: fy }));

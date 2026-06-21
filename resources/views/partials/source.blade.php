@@ -8,12 +8,12 @@
         </div>
 
         <div class="relative rounded-2xl overflow-hidden border border-ink-alt/12 select-none"
-            :class="pickMode ? 'cursor-crosshair ring-2 ring-accent ring-offset-2 ring-offset-bg' : ''"
+            :class="pickMode ? 'cursor-none ring-2 ring-accent ring-offset-2 ring-offset-bg' : ''"
             @mousemove="onImageMove($event)"
             @mouseleave="loupe.show = false"
             @click="onImageClick($event)">
 
-            <img :src="thumbUrl" class="w-full block pointer-events-none" alt="Image source de la palette">
+            <img x-ref="srcImg" :src="thumbUrl" class="w-full block pointer-events-none" alt="Image source de la palette">
 
             {{-- Bouton pipette flottant --}}
             <button @click.stop="togglePick()"
@@ -47,20 +47,14 @@
                 </div>
             </template>
 
-            {{-- Loupe (pipette) --}}
+            {{-- Loupe pipette : centrée sur le curseur, réticule = pixel piqué --}}
             <div x-show="loupe.show && pickMode" x-cloak
-                class="absolute w-28 h-28 rounded-full border-[3px] border-white shadow-[0_4px_16px_rgba(0,0,0,.35)] pointer-events-none overflow-hidden -translate-x-1/2 z-30"
-                :style="{
-                    left: loupe.x + 'px',
-                    top: (loupe.y - 80) + 'px',
-                    backgroundImage: 'url(' + thumbUrl + ')',
-                    backgroundRepeat: 'no-repeat',
-                    backgroundSize: '900%',
-                    backgroundPosition: loupe.bg,
-                    imageRendering: 'pixelated'
-                }">
-                <span class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 border-2 border-white/90 rounded-[3px] mix-blend-difference"></span>
-                <span class="absolute bottom-0 inset-x-0 text-center text-[10px] font-mono text-white bg-black/55 py-0.5" x-text="loupe.hex"></span>
+                class="absolute -translate-x-1/2 -translate-y-1/2 pointer-events-none z-30 flex flex-col items-center"
+                :style="{ left: loupe.x + 'px', top: loupe.y + 'px' }">
+                <canvas x-ref="loupe" width="132" height="132"
+                    class="w-[110px] h-[110px] rounded-full border-[3px] border-white shadow-[0_4px_18px_rgba(0,0,0,.4)] bg-white"
+                    style="image-rendering: pixelated;"></canvas>
+                <span class="mt-1.5 px-2 py-0.5 rounded-md text-[11px] font-mono font-semibold text-white bg-ink/85 shadow-sm" x-text="loupe.hex"></span>
             </div>
         </div>
 

@@ -51,14 +51,15 @@
 
                 <span class="absolute top-3 left-0 right-0 text-center text-[13px] tracking-[1px] opacity-50 cursor-grab select-none">⠿</span>
 
-                <button @click="toggleLock(i)" class="absolute top-2.5 right-2.5 w-7 h-7 rounded-lg flex items-center justify-center transition-opacity"
-                    :style="{ background: 'color-mix(in srgb, ' + fg(c.hex) + ' 15%, transparent)' }"
-                    :aria-label="c.locked ? 'Déverrouiller' : 'Verrouiller'">
+                <button @click="toggleLock(i)" class="absolute top-2.5 right-2.5 w-8 h-8 rounded-lg flex items-center justify-center transition-all"
+                    :style="{ background: c.locked ? fg(c.hex) : 'color-mix(in srgb, ' + fg(c.hex) + ' 18%, transparent)' }"
+                    :aria-label="c.locked ? 'Déverrouiller' : 'Verrouiller'"
+                    :title="c.locked ? 'Verrouillée — épargnée par Espace' : 'Verrouiller cette couleur'">
                     <template x-if="c.locked">
-                        <svg class="icon w-[15px] h-[15px]" :style="{ stroke: fg(c.hex) }" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+                        <svg class="icon w-[16px] h-[16px]" :style="{ stroke: c.hex }" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
                     </template>
                     <template x-if="!c.locked">
-                        <svg class="icon w-[15px] h-[15px] opacity-55 group-hover:opacity-100" :style="{ stroke: fg(c.hex) }" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 4-4 4 4 0 0 1 3.5 2"/></svg>
+                        <svg class="icon w-[16px] h-[16px] opacity-80" :style="{ stroke: fg(c.hex) }" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 4-4 4 4 0 0 1 3.5 2"/></svg>
                     </template>
                 </button>
 
@@ -84,13 +85,37 @@
         </button>
     </div>
 
+    {{-- BARRE DE CONTRÔLES (mise en avant) --}}
+    <div class="max-w-[1180px] mx-auto mt-3 px-5 sm:px-2">
+        <div class="flex flex-wrap items-center gap-x-5 gap-y-2 bg-white border border-ink-alt/12 rounded-2xl px-4 py-3 shadow-[0_2px_12px_rgba(28,28,30,.04)]">
+            <button @click="reroll()" class="flex items-center gap-2 group/k" title="Régénérer les couleurs non verrouillées">
+                <kbd class="px-2.5 py-1 rounded-lg bg-ink text-bg font-mono text-[12px] font-semibold shadow-[0_2px_0_rgba(0,0,0,.25)] group-active/k:translate-y-px transition-transform">Espace</kbd>
+                <span class="text-[13px] font-medium">Régénérer</span>
+            </button>
+            <span class="hidden sm:block w-px h-5 bg-ink-alt/15"></span>
+            <span class="flex items-center gap-2 text-[13px] text-ink-alt">
+                <svg class="icon w-4 h-4 stroke-accent" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+                Verrouille pour figer
+            </span>
+            <span class="hidden sm:block w-px h-5 bg-ink-alt/15"></span>
+            <span class="flex items-center gap-2 text-[13px] text-ink-alt">
+                <span class="text-accent text-[15px] leading-none">⠿</span> Glisse pour réordonner
+            </span>
+            <span class="hidden sm:block w-px h-5 bg-ink-alt/15"></span>
+            <span class="flex items-center gap-2 text-[13px] text-ink-alt">
+                <svg class="icon w-4 h-4 stroke-accent" viewBox="0 0 24 24"><path d="M19 3a2.8 2.8 0 0 0-4 0l-2 2 4 4 2-2a2.8 2.8 0 0 0 0-4z"/><path d="M13 7L4 16v4h4l9-9"/></svg>
+                Pipette pour piocher
+            </span>
+        </div>
+    </div>
+
     {{-- TOOLBAR --}}
-    <div class="max-w-[1180px] mx-auto mt-5 px-5 sm:px-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+    <div class="max-w-[1180px] mx-auto mt-3 px-5 sm:px-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div class="flex items-center gap-3">
             <img :src="thumbUrl" class="w-[46px] h-[46px] rounded-[10px] object-cover border border-ink-alt/15" alt="">
             <div class="text-[13px]">
                 <strong class="font-title font-semibold" x-text="fileName"></strong>
-                <small class="block text-ink-alt mt-0.5"><span x-text="colors.length"></span> couleurs · OKLCH · <kbd class="font-mono text-[11px]">espace</kbd> régénère · glisse pour réordonner</small>
+                <small class="block text-ink-alt mt-0.5"><span x-text="colors.length"></span> couleurs · espace OKLCH</small>
             </div>
         </div>
         <div class="flex flex-wrap gap-2.5">
@@ -99,6 +124,9 @@
             </button>
             <button class="btn" @click="reroll()">
                 <svg class="icon" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg> Régénérer
+            </button>
+            <button class="btn" @click="editAgain()">
+                <svg class="icon" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4z"/></svg> Éditer
             </button>
             <button class="btn" @click="reset()">
                 <svg class="icon" viewBox="0 0 24 24"><path d="M12 16V4M8 8l4-4 4 4"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg> Nouvelle image
