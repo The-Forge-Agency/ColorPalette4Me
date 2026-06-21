@@ -95,6 +95,141 @@ export function toBootstrap(colors) {
     return lines.join('\n');
 }
 
+// --- palette.svg (feuille vectorielle — se glisse dans Figma / Illustrator) ---
+export function toSvg(colors) {
+    const pad = 32, rowH = 96, swW = 150, chipH = 30, headH = 92;
+    const width = 960;
+    const height = headH + colors.length * rowH + pad;
+    const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+    const parts = [
+        `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" font-family="Inter, sans-serif">`,
+        `<rect width="${width}" height="${height}" fill="#FAFAF7"/>`,
+        `<text x="${pad}" y="48" font-size="26" font-weight="700" fill="#1C1C1E" font-family="Space Grotesk, sans-serif">ColorPalette4Me</text>`,
+        `<text x="${pad}" y="72" font-size="13" fill="#6B6B73">${colors.length} couleurs · rampe 50→950</text>`,
+    ];
+    colors.forEach((c, i) => {
+        const y = headH + i * rowH;
+        parts.push(`<rect x="${pad}" y="${y}" width="${swW}" height="64" rx="10" fill="${c.hex}"/>`);
+        parts.push(`<text x="${pad + 12}" y="${y + 26}" font-size="14" font-weight="600" fill="#fff" font-family="Space Grotesk, sans-serif">${esc(c.role)}</text>`);
+        parts.push(`<text x="${pad + 12}" y="${y + 46}" font-size="12" fill="#fff" font-family="monospace">${esc(c.hex)}</text>`);
+        const rx0 = pad + swW + 18;
+        const cw = (width - pad - rx0) / STEPS.length;
+        STEPS.forEach((step, j) => {
+            const x = rx0 + j * cw;
+            parts.push(`<rect x="${x.toFixed(1)}" y="${y}" width="${(cw - 4).toFixed(1)}" height="${chipH}" rx="5" fill="${c.ramp[step]}"/>`);
+            parts.push(`<text x="${(x + (cw - 4) / 2).toFixed(1)}" y="${y + chipH + 16}" font-size="9" fill="#6B6B73" text-anchor="middle" font-family="monospace">${step}</text>`);
+        });
+    });
+    parts.push('</svg>');
+    return parts.join('\n');
+}
+
+// --- palette.html (styleguide autonome, s'ouvre dans le navigateur) ---
+export function toHtml(colors) {
+    const card = (c) => `
+    <section class="ramp">
+      <header><span class="dot" style="background:${c.hex}"></span><b>${c.role}</b><code>${c.hex}</code></header>
+      <div class="strip">${STEPS.map((s) => `<div class="chip"><span style="background:${c.ramp[s]}"></span><small>${s}</small><em>${c.ramp[s]}</em></div>`).join('')}</div>
+    </section>`;
+    return `<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Palette — ColorPalette4Me</title>
+<style>
+:root{--bg:#FAFAF7;--ink:#1C1C1E;--alt:#6B6B73;--accent:#6D5BFF}
+*{box-sizing:border-box;margin:0}body{background:var(--bg);color:var(--ink);font-family:Inter,system-ui,sans-serif;padding:40px 24px;max-width:1100px;margin:0 auto}
+h1{font-size:30px;letter-spacing:-1px}h1 span{color:var(--accent)}p.sub{color:var(--alt);margin:6px 0 28px}
+.ramp{background:#fff;border:1px solid #6b6b7322;border-radius:16px;padding:18px;margin-bottom:14px}
+.ramp header{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.ramp .dot{width:14px;height:14px;border-radius:50%}.ramp b{font-size:15px}.ramp code{margin-left:auto;color:var(--alt);font-family:monospace;font-size:13px}
+.strip{display:grid;grid-template-columns:repeat(11,1fr);gap:6px}
+.chip span{display:block;height:46px;border-radius:8px}.chip small{display:block;text-align:center;color:var(--alt);font-size:10px;margin-top:5px}
+.chip em{display:block;text-align:center;color:var(--alt);font-family:monospace;font-size:9px;font-style:normal}
+footer{color:var(--alt);font-size:12px;text-align:center;margin-top:28px}
+</style></head>
+<body>
+<h1>Ta <span>palette</span></h1>
+<p class="sub">${colors.length} couleurs · rampe 50→950 · généré par ColorPalette4Me</p>
+${colors.map(card).join('')}
+<footer>Généré par ColorPalette4Me — Projet #07/52 · Sprint Factory</footer>
+</body></html>
+`;
+}
+
+// --- palette.pdf (fiche imprimable, PDF vectoriel écrit à la main) ---
+function pdfStr(s) {
+    return String(s).normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+}
+function pdfRect(hex, x, y, w, h) {
+    const { r, g, b } = hexToRgb(hex);
+    const f = (n) => (n / 255).toFixed(3);
+    return `${f(r)} ${f(g)} ${f(b)} rg ${x.toFixed(1)} ${y.toFixed(1)} ${w.toFixed(1)} ${h.toFixed(1)} re f`;
+}
+export function toPdf(colors) {
+    const W = 595, H = 842, M = 42;
+    const ops = [];
+    ops.push(`0.98 0.98 0.969 rg 0 0 ${W} ${H} re f`);
+    ops.push(`0.11 0.11 0.118 rg BT /F1 22 Tf ${M} ${H - M - 6} Td (ColorPalette4Me) Tj ET`);
+    ops.push(`0.42 0.42 0.45 rg BT /F1 11 Tf ${M} ${H - M - 26} Td (Palette generee - ${colors.length} couleurs - rampe 50 a 950) Tj ET`);
+    const swW = 120, rowH = 78;
+    let y = H - M - 64;
+    for (const c of colors) {
+        ops.push(pdfRect(c.hex, M, y - 46, swW, 46));
+        ops.push(`0.11 0.11 0.118 rg BT /F1 12 Tf ${M} ${y - 62} Td (${pdfStr(c.role)}  ${pdfStr(c.hex)}) Tj ET`);
+        const rx0 = M + swW + 16;
+        const cw = (W - M - rx0) / STEPS.length;
+        STEPS.forEach((step, j) => ops.push(pdfRect(c.ramp[step], rx0 + j * cw, y - 46, cw - 3, 46)));
+        y -= rowH;
+    }
+    ops.push(`0.42 0.42 0.45 rg BT /F1 9 Tf ${M} ${M} Td (Genere par ColorPalette4Me - Projet #07/52 - Sprint Factory) Tj ET`);
+    const content = ops.join('\n');
+
+    const objs = [
+        '<< /Type /Catalog /Pages 2 0 R >>',
+        '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+        `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${W} ${H}] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>`,
+        `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
+        '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+    ];
+    let pdf = '%PDF-1.4\n';
+    const offsets = [];
+    objs.forEach((body, i) => {
+        offsets.push(pdf.length);
+        pdf += `${i + 1} 0 obj\n${body}\nendobj\n`;
+    });
+    const xrefStart = pdf.length;
+    pdf += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n`;
+    offsets.forEach((o) => { pdf += String(o).padStart(10, '0') + ' 00000 n \n'; });
+    pdf += `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`;
+    return new TextEncoder().encode(pdf);
+}
+
+// --- Prompt IA (résumé de la charte, prêt pour ChatGPT / Claude) ---
+export function toPrompt(colors) {
+    const lines = [
+        'Voici une charte graphique que je viens de générer à partir d\'une image avec ColorPalette4Me.',
+        '',
+        'Palette (rôle · HEX) :',
+    ];
+    for (const c of colors) {
+        lines.push(`- ${c.role} · ${c.hex}`);
+    }
+    lines.push('', 'Rampes (50 → 950) :');
+    for (const c of colors) {
+        lines.push(`- ${c.key}: ${STEPS.map((s) => `${s} ${c.ramp[s]}`).join(', ')}`);
+    }
+    lines.push(
+        '',
+        'Utilise cette palette pour m\'aider à concevoir mon interface. Respecte les rôles :',
+        'Primary = action principale / liens, Accent = mises en avant, Support = succès/secondaire,',
+        'Surface = fonds clairs, Ink = texte. Garde des contrastes accessibles (WCAG AA minimum).',
+        '',
+        'Pour commencer, propose-moi un thème cohérent (tokens + exemples de composants : boutons,',
+        'cartes, formulaire, badges) en utilisant ces couleurs.'
+    );
+    return lines.join('\n');
+}
+
 // --- Écriture binaire utilitaire ---
 class ByteBuffer {
     constructor() { this.bytes = []; }

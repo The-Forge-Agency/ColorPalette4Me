@@ -17,6 +17,10 @@ import {
     toBootstrap,
     toTokensJson,
     toAse,
+    toSvg,
+    toHtml,
+    toPdf,
+    toPrompt,
     toZip,
 } from './exporters.js';
 
@@ -562,6 +566,79 @@ Alpine.data('paletteApp', () => ({
     downloadBootstrap() { downloadBlob('_bootstrap-overrides.scss', toBootstrap(this.colors), 'text/x-scss'); },
     downloadJson() { downloadBlob('tokens.json', toTokensJson(this.colors), 'application/json'); },
     downloadAse() { downloadBlob('palette.ase', toAse(this.colors), 'application/octet-stream'); },
+    downloadSvg() { downloadBlob('palette.svg', toSvg(this.colors), 'image/svg+xml'); },
+    downloadHtml() { downloadBlob('palette.html', toHtml(this.colors), 'text/html'); },
+    downloadPdf() { downloadBlob('palette.pdf', toPdf(this.colors), 'application/pdf'); },
+
+    // Poster PNG partageable (rendu canvas).
+    async downloadPng() {
+        const c = this.colors;
+        if (!c.length) return;
+        if (document.fonts?.ready) { try { await document.fonts.ready; } catch (e) { /* fallback police système */ } }
+        const W = 1200, headH = 116, barsH = 600, footH = 84, H = headH + barsH + footH;
+        const canvas = document.createElement('canvas');
+        canvas.width = W;
+        canvas.height = H;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#FAFAF7';
+        ctx.fillRect(0, 0, W, H);
+        ctx.textBaseline = 'alphabetic';
+        ctx.fillStyle = '#1C1C1E';
+        ctx.font = '600 36px "Space Grotesk", sans-serif';
+        ctx.fillText('ColorPalette4Me', 48, 70);
+        ctx.fillStyle = '#6B6B73';
+        ctx.font = '400 16px Inter, sans-serif';
+        ctx.fillText(`${c.length} couleurs · rampe 50→950 · une image, une palette`, 48, 96);
+
+        const bw = W / c.length;
+        c.forEach((col, i) => {
+            const x = i * bw;
+            ctx.fillStyle = col.hex;
+            ctx.fillRect(x, headH, Math.ceil(bw), barsH);
+            ctx.fillStyle = this.fg(col.hex);
+            ctx.font = '600 22px "Space Grotesk", sans-serif';
+            ctx.fillText(col.hex, x + 20, headH + barsH - 56);
+            ctx.font = '500 12px Inter, sans-serif';
+            ctx.globalAlpha = 0.75;
+            ctx.fillText(col.role.toUpperCase(), x + 20, headH + barsH - 34);
+            ctx.globalAlpha = 1;
+        });
+
+        ctx.fillStyle = '#6B6B73';
+        ctx.font = '400 14px Inter, sans-serif';
+        ctx.fillText('Généré par ColorPalette4Me — Projet #07/52 · Sprint Factory', 48, H - 32);
+
+        canvas.toBlob((blob) => {
+            if (!blob) return;
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'palette.png';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }, 'image/png');
+    },
+
+    // --- Assistant IA : ouvre la charte dans ChatGPT / Claude ---
+    get aiPrompt() {
+        return toPrompt(this.colors);
+    },
+    openInChatGPT() {
+        window.open('https://chatgpt.com/?q=' + encodeURIComponent(this.aiPrompt), '_blank');
+    },
+    openInClaude() {
+        window.open('https://claude.ai/new?q=' + encodeURIComponent(this.aiPrompt), '_blank');
+    },
+    copyPrompt() {
+        this.copy(this.aiPrompt, 'prompt');
+    },
+
+    // Liste de HEX brute — universelle (Canva Brand Kit, Notion, n'importe quel outil).
+    copyHexList() {
+        this.copy(this.colors.map((c) => c.hex).join('  '), 'hexlist');
+    },
 
     downloadAll() {
         const files = [
@@ -571,6 +648,9 @@ Alpine.data('paletteApp', () => ({
             { name: '_bootstrap-overrides.scss', data: toBootstrap(this.colors) },
             { name: 'tokens.json', data: toTokensJson(this.colors) },
             { name: 'palette.ase', data: toAse(this.colors) },
+            { name: 'palette.svg', data: toSvg(this.colors) },
+            { name: 'palette.html', data: toHtml(this.colors) },
+            { name: 'palette.pdf', data: toPdf(this.colors) },
             { name: 'README.txt', data: 'Palette générée avec ColorPalette4Me — Projet #07/52 · Sprint Factory\nUne image entre, ta palette sort.\n' },
         ];
         downloadBlob('colorpalette4me.zip', toZip(files), 'application/zip');
