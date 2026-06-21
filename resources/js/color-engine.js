@@ -280,7 +280,7 @@ function labDistance(hexA, hexB) {
  * @returns {{hex: string, x: number, y: number}[]} couleurs triées par dominance,
  *          avec coordonnées normalisées (0→1) du pixel d'origine.
  */
-export function extractPalette(data, count, width = 0) {
+export function extractPalette(data, count, width = 0, mode = 'balanced') {
     const points = [];
     const total = data.length / 4;
     // On échantillonne pour rester rapide même sur de grandes images.
@@ -299,25 +299,61 @@ export function extractPalette(data, count, width = 0) {
     }
     if (!points.length) return [];
 
-    // On extrait un peu plus de clusters que demandé puis on garde les plus
-    // distincts : ça évite que deux découpages tombent sur la même teinte et
-    // garantit un éventail complet, du plus présent au plus rare.
-    const clusters = medianCut(points, Math.min(points.length, count + 4));
-    clusters.sort((p, q) => q.weight - p.weight);
-
-    const out = [];
-    for (const c of clusters) {
+    // 1) Quantification fine : beaucoup plus de clusters que demandé, pour que
+    //    les teintes vives mais minoritaires (un jaune, un bleu) aient leur boîte.
+    const fine = Math.min(points.length, Math.max(count * 6, 32));
+    let clusters = medianCut(points, fine).map((c) => {
         const rgb = oklabToRgb(c.lab);
-        const hex = rgbToHex({
-            r: clamp(rgb.r, 0, 255),
-            g: clamp(rgb.g, 0, 255),
-            b: clamp(rgb.b, 0, 255),
-        });
-        // Fusionne uniquement les teintes perceptuellement quasi identiques.
-        if (!out.some((o) => labDistance(o.hex, hex) < 0.03)) {
-            out.push({ hex, x: c.x ?? null, y: c.y ?? null });
-        }
-        if (out.length >= count) break;
+        return {
+            hex: rgbToHex({
+                r: clamp(rgb.r, 0, 255),
+                g: clamp(rgb.g, 0, 255),
+                b: clamp(rgb.b, 0, 255),
+            }),
+            lab: c.lab,
+            weight: c.weight,
+            chroma: Math.sqrt(c.lab.a * c.lab.a + c.lab.b * c.lab.b),
+            x: c.x ?? null,
+            y: c.y ?? null,
+        };
+    });
+
+    // 2) Fusionne les teintes quasi identiques (garde la plus présente).
+    clusters.sort((p, q) => q.weight - p.weight);
+    const merged = [];
+    for (const c of clusters) {
+        if (!merged.some((m) => labDistance(m.hex, c.hex) < 0.03)) merged.push(c);
     }
-    return out;
+
+    // 3) Écarte le bruit : on ne garde que les clusters suffisamment présents.
+    const totalW = merged.reduce((s, c) => s + c.weight, 0);
+    let pool = merged.filter((c) => c.weight >= totalW * 0.004);
+    if (pool.length < count) pool = merged;
+
+    // 4) Noyau dominant trié par présence. Sa taille dépend du mode choisi :
+    //    - dominant : tout le noyau (palette la plus fidèle / harmonieuse)
+    //    - balanced : 4 dominantes harmonieuses, le reste en diversité
+    //    - vibrant  : on part d'une seule dominante puis on maximise la variété
+    const coreSize = mode === 'dominant' ? count : mode === 'vibrant' ? 1 : Math.min(4, count);
+    const chromaWeight = mode === 'vibrant' ? 1.5 : 1;
+    const chromaBase = mode === 'vibrant' ? 0.2 : 0.35;
+    const selected = pool.slice(0, coreSize);
+
+    // 5) Diversité pour les slots restants : teinte la plus distincte × vivace.
+    const dist = (a, b) =>
+        Math.sqrt((a.lab.L - b.lab.L) ** 2 + (a.lab.a - b.lab.a) ** 2 + (a.lab.b - b.lab.b) ** 2);
+    while (selected.length < count && selected.length < pool.length) {
+        let best = null, bestScore = -1;
+        for (const c of pool) {
+            if (selected.includes(c)) continue;
+            let minD = Infinity;
+            for (const s of selected) minD = Math.min(minD, dist(c, s));
+            const score = minD * (chromaBase + c.chroma * chromaWeight);
+            if (score > bestScore) { bestScore = score; best = c; }
+        }
+        if (!best) break;
+        selected.push(best);
+    }
+
+    return selected.map((c) => ({ hex: c.hex, x: c.x, y: c.y }));
 }

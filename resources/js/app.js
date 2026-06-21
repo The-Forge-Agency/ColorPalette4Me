@@ -45,6 +45,8 @@ function downloadBlob(filename, data, mime) {
 Alpine.data('paletteApp', () => ({
     screen: 'upload',
     count: 6,
+    activeMode: 'balanced',
+    variants: { dominant: [], balanced: [], vibrant: [] },
     fileName: '',
     thumbUrl: '',
     loading: false,
@@ -140,9 +142,22 @@ Alpine.data('paletteApp', () => ({
         img.src = url;
     },
 
+    // Calcule les 3 variantes d'un coup, puis charge la variante active.
     buildFromImage() {
-        const found = extractPalette(this._imageData, this.count, this._imgW);
-        this.colors = found.map((f, i) => this.makeColor(f.hex, i, f));
+        for (const m of ['dominant', 'balanced', 'vibrant']) {
+            this.variants[m] = extractPalette(this._imageData, this.count, this._imgW, m);
+        }
+        this.loadVariant(this.activeMode);
+    },
+
+    loadVariant(m) {
+        this.activeMode = m;
+        this.colors = this.variants[m].map((f, i) => this.makeColor(f.hex, i, f));
+    },
+
+    selectVariant(m) {
+        if (this.activeMode === m) return;
+        this.loadVariant(m);
     },
 
     makeColor(hex, i, pos = null) {
@@ -231,7 +246,7 @@ Alpine.data('paletteApp', () => ({
     // --- Régénération (spacebar) : re-roll des couleurs non verrouillées ---
     reroll() {
         if (this._imageData) {
-            const candidates = extractPalette(this._imageData, Math.min(12, this.colors.length + 5), this._imgW);
+            const candidates = extractPalette(this._imageData, Math.min(12, this.colors.length + 5), this._imgW, this.activeMode);
             if (candidates.length) {
                 this.colors.forEach((c, i) => {
                     if (c.locked) return;

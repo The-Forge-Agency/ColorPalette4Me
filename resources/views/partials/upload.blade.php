@@ -53,6 +53,8 @@
                 <button @click="changeCount(1)" class="w-8 h-8 rounded-[9px] border border-ink-alt/20 bg-white text-[18px] leading-none hover:border-accent transition-colors" aria-label="Plus">+</button>
             </div>
         </div>
+
+        <p class="text-center text-[12.5px] text-ink-alt mt-3">Après l'upload, choisis ton style : <span class="text-accent font-medium">Dominantes</span>, <span class="text-accent font-medium">Équilibré</span> ou <span class="text-accent font-medium">Vibrant</span>.</p>
     </div>
 
     {{-- FEATURES --}}

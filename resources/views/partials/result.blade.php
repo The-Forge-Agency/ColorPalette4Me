@@ -1,8 +1,45 @@
 {{-- ÉCRAN RÉSULTAT --}}
 <section x-show="screen === 'result'" x-transition.opacity style="display:none">
 
+    {{-- CHOIX DE LA VARIANTE --}}
+    <div class="max-w-[1180px] mx-auto px-5 sm:px-2 mt-2">
+        <div class="flex items-center gap-2 mb-2.5">
+            <span class="font-title text-[13px] font-medium text-ink-alt uppercase tracking-[2px]">Choisis ton style</span>
+            <span class="text-[12px] text-ink-alt">— 3 façons de lire la même image</span>
+        </div>
+        <div class="grid grid-cols-3 gap-2.5">
+            @php
+                $variantList = [
+                    ['dominant', 'Dominantes', 'Les plus présentes'],
+                    ['balanced', 'Équilibré', 'Base + accents'],
+                    ['vibrant', 'Vibrant', 'Max de diversité'],
+                ];
+            @endphp
+            @foreach ($variantList as [$val, $label, $hint])
+                <button @click="selectVariant('{{ $val }}')"
+                    class="rounded-2xl border p-3 text-left transition-all"
+                    :class="activeMode === '{{ $val }}' ? 'border-accent bg-accent/6 shadow-[0_2px_12px_rgba(109,91,255,.12)]' : 'border-ink-alt/15 bg-white hover:border-accent/40'">
+                    <div class="flex h-7 rounded-lg overflow-hidden mb-2">
+                        <template x-for="(c, i) in variants['{{ $val }}']" :key="i">
+                            <div class="flex-1" :style="{ background: c.hex }"></div>
+                        </template>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span>
+                            <span class="block font-title text-[13px] font-semibold leading-tight" :class="activeMode === '{{ $val }}' ? 'text-accent' : 'text-ink'">{{ $label }}</span>
+                            <span class="hidden sm:block text-[11px] text-ink-alt">{{ $hint }}</span>
+                        </span>
+                        <span x-show="activeMode === '{{ $val }}'" class="w-4 h-4 rounded-full bg-accent flex items-center justify-center shrink-0">
+                            <svg class="icon w-2.5 h-2.5 stroke-white" viewBox="0 0 24 24"><path d="M5 12l4 4 10-10"/></svg>
+                        </span>
+                    </div>
+                </button>
+            @endforeach
+        </div>
+    </div>
+
     {{-- BARRES STYLE COOLORS --}}
-    <div class="flex h-[260px] sm:h-[300px] max-w-[1180px] mx-auto mt-2 sm:rounded-[18px] overflow-hidden shadow-[0_4px_24px_rgba(28,28,30,0.06)]">
+    <div class="flex h-[260px] sm:h-[300px] max-w-[1180px] mx-auto mt-3 sm:rounded-[18px] overflow-hidden shadow-[0_4px_24px_rgba(28,28,30,0.06)]">
         <template x-for="(c, i) in colors" :key="c.role + i">
             <div
                 class="flex-1 flex flex-col items-center justify-end pb-5 relative transition-[flex] group"
